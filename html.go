@@ -22,22 +22,27 @@ var tagSingleBlock = map[string]bool{
 }
 
 var tagBlock = map[string]bool{
-	"p":   true,
-	"div": true,
-	"li":  true,
-	"h1":  true,
-	"h2":  true,
-	"h3":  true,
-	"h4":  true,
-	"h5":  true,
-	"h6":  true,
-	"tr":  true,
-	"dt":  true,
-	"dd":  true,
+	"p":          true,
+	"div":        true,
+	"li":         true,
+	"h1":         true,
+	"h2":         true,
+	"h3":         true,
+	"h4":         true,
+	"h5":         true,
+	"h6":         true,
+	"tr":         true,
+	"dt":         true,
+	"dd":         true,
+	"pre":        true,
+	"blockquote": true,
+	"option":     true,
 }
 
 var tagInlineBlock = map[string]bool{
-	"td": true,
+	"button": true,
+	"input":  true,
+	"td":     true,
 }
 
 func HTMLToText(r io.Reader) ([]byte, error) {

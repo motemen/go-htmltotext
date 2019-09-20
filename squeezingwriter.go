@@ -10,7 +10,7 @@ import (
 
 type squeezingWriter struct {
 	writer   io.Writer
-	putSpace bool
+	nextChar byte
 	atStart  bool
 }
 
@@ -26,22 +26,27 @@ func (w *squeezingWriter) Write(p []byte) (int, error) {
 	if s == "" {
 		return 0, nil
 	}
-	if w.putSpace || (leading && !w.atStart) {
+	if w.nextChar != '\000' {
+		w.writer.Write([]byte{w.nextChar})
+	} else if leading && !w.atStart {
 		w.writer.Write([]byte{' '})
 	}
-	w.putSpace = trailing
+	if trailing {
+		w.nextChar = ' '
+	} else {
+		w.nextChar = '\000'
+	}
 	w.atStart = false
 	return w.writer.Write([]byte(s))
 }
 
 func (w *squeezingWriter) WriteSpace() {
-	w.putSpace = true
+	w.nextChar = ' '
 	w.atStart = false
 }
 
 func (w *squeezingWriter) WriteNewLine() {
-	w.writer.Write([]byte{'\n'})
-	w.putSpace = false
+	w.nextChar = '\n'
 	w.atStart = true
 }
 
