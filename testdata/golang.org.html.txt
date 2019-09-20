@@ -1,0 +1,66 @@
+Go
+
+Documents
+
+Packages
+
+The Project
+
+Help
+
+Blog
+
+Play
+
+
+
+
+
+
+
+Go is an open source programming language that makes it easy to build simple, reliable, and efficient software.
+Download Go
+Binary distributions available for
+Linux, macOS, Windows, and more.
+
+
+Try Go
+Open in Playground
+
+// You can edit this code!
+// Click here and start typing.
+package main
+
+import "fmt"
+
+func main() {
+  fmt.Println("Hello, 世界")
+}
+
+Hello, 世界
+
+Hello, World!Conway's Game of LifeFibonacci ClosurePeano IntegersConcurrent piConcurrent Prime SievePeg Solitaire SolverTree Comparison
+Run
+ShareTour
+
+
+
+Featured articles
+
+Read more >
+
+Featured video
+
+
+
+
+
+The Go Gopher
+Copyright
+
+Terms of Service
+
+Privacy Policy
+
+Report a website issue
+Supported by Google
