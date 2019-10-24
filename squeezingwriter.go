@@ -16,7 +16,8 @@ type squeezingWriter struct {
 type state int
 
 const (
-	stateNone state = iota
+	stateStartOfDocument state = iota
+	stateNone
 	stateSpace
 	stateNewline
 	stateParagraph
@@ -26,7 +27,7 @@ const (
 func newSqueezingWriter(w io.Writer) *squeezingWriter {
 	return &squeezingWriter{
 		writer: w,
-		state:  stateStart,
+		state:  stateStartOfDocument,
 	}
 }
 
@@ -45,6 +46,8 @@ func (w *squeezingWriter) writeNonspace(p []byte) (int, error) {
 		lead, nextState = "\n\n", stateNone
 	case stateStart:
 		lead, nextState = "", stateNone
+	case stateStartOfDocument:
+		lead, nextState = "", stateNone
 	}
 
 	w.state = nextState
@@ -58,10 +61,9 @@ func (w *squeezingWriter) writeSpace() (int, error) {
 		w.state = stateSpace
 	case stateSpace:
 	case stateNewline:
-		//w.state = stateStart
-		//return w.writer.Write([]byte{'\n'})
 	case stateParagraph:
 	case stateStart:
+	case stateStartOfDocument:
 	}
 
 	return 0, nil
@@ -90,8 +92,9 @@ func (w *squeezingWriter) InsertSpace() {
 	case stateNewline:
 		w.writeNonspace([]byte{'\n'})
 		w.state = stateStart
-	case stateStart:
 	case stateParagraph:
+	case stateStart:
+	case stateStartOfDocument:
 	}
 }
 
@@ -115,10 +118,11 @@ func (w *squeezingWriter) InsertParagraph() {
 		w.state = stateParagraph
 	case stateNewline:
 		w.state = stateParagraph
-	case stateStart:
-		w.state = stateParagraph
 	case stateParagraph:
 		w.state = stateParagraph
+	case stateStart:
+		w.state = stateParagraph
+	case stateStartOfDocument:
 	}
 }
 
