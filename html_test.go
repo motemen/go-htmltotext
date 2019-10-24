@@ -11,7 +11,7 @@ import (
 )
 
 func TestParseHTMLToText(t *testing.T) {
-	files, err := filepath.Glob("testdata/*.html")
+	files, err := filepath.Glob("testdata/www.example.com.html")
 	if err != nil {
 		t.Fatal(err)
 	}

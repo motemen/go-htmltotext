@@ -22,27 +22,32 @@ var tagSingleBlock = map[string]bool{
 }
 
 var tagBlock = map[string]bool{
+	"div":    true,
+	"tr":     true,
+	"dt":     true,
+	"dd":     true,
+	"option": true,
+}
+
+var tagParagraph = map[string]bool{
 	"p":          true,
-	"div":        true,
-	"li":         true,
+	"pre":        true,
+	"blockquote": true,
 	"h1":         true,
 	"h2":         true,
 	"h3":         true,
 	"h4":         true,
 	"h5":         true,
 	"h6":         true,
-	"tr":         true,
-	"dt":         true,
-	"dd":         true,
-	"pre":        true,
-	"blockquote": true,
-	"option":     true,
+	"ul":         true,
+	"ol":         true,
 }
 
 var tagInlineBlock = map[string]bool{
-	"button": true,
-	"input":  true,
-	"td":     true,
+	// "button": true,
+	"input": true,
+	"td":    true,
+	"li":    true,
 }
 
 func HTMLToText(r io.Reader) ([]byte, error) {
@@ -70,9 +75,11 @@ parseHTML:
 			tn, _ := z.TagName()
 			skip = tagSkip[string(tn)] // TODO: aria-hidden
 			if tagSingleBlock[string(tn)] {
-				w.WriteNewLine()
+				w.InsertNewline()
+			} else if tagParagraph[string(tn)] {
+				w.InsertParagraph()
 			} else if tagBlock[string(tn)] {
-				w.WriteNewLine()
+				w.InsertNewline()
 			}
 			if string(tn) == "img" {
 				for {
@@ -90,9 +97,11 @@ parseHTML:
 			tn, _ := z.TagName()
 			skip = tagSkip[string(tn)]
 			if tagBlock[string(tn)] {
-				w.WriteNewLine()
+				w.InsertNewline()
+			} else if tagParagraph[string(tn)] {
+				w.InsertParagraph()
 			} else if tagInlineBlock[string(tn)] {
-				w.WriteSpace()
+				w.InsertNewline()
 			}
 		}
 	}
