@@ -20,14 +20,17 @@ func TestParseHTMLToText(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		want, err := ioutil.ReadFile(file + ".txt")
-		if err != nil {
-			t.Fatal(err)
-		}
 
 		text, err := HTMLToText(f)
 		if err != nil {
 			t.Fatal(err)
+		}
+
+		want, err := ioutil.ReadFile(file + ".txt")
+		if err != nil {
+			t.Log(string(text))
+			t.Error(err)
+			continue
 		}
 
 		if diff := cmp.Diff(string(want), string(text)); diff != "" {

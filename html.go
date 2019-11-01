@@ -39,6 +39,7 @@ var tagConfig = map[string]tagKind{
 	"header":  tagKindBlock,
 	"nav":     tagKindBlock,
 	"article": tagKindBlock,
+	"li":      tagKindBlock,
 
 	"p":          tagKindParagraph,
 	"pre":        tagKindParagraph,
@@ -51,10 +52,11 @@ var tagConfig = map[string]tagKind{
 	"h6":         tagKindParagraph,
 	"ul":         tagKindParagraph,
 	"ol":         tagKindParagraph,
+	"table":      tagKindParagraph,
 
 	"input": tagKindInlineBlock,
+	"th":    tagKindInlineBlock,
 	"td":    tagKindInlineBlock,
-	"li":    tagKindInlineBlock,
 }
 
 func HTMLToText(r io.Reader) ([]byte, error) {
@@ -114,7 +116,7 @@ parseHTML:
 			case tagKindParagraph:
 				w.InsertParagraph()
 			case tagKindInlineBlock:
-				w.InsertNewline()
+				w.InsertSpace()
 			}
 		}
 	}
