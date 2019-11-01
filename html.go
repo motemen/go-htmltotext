@@ -9,45 +9,52 @@ import (
 	htmlParser "golang.org/x/net/html"
 )
 
-var tagSkip = map[string]bool{
-	"head":   true,
-	"script": true,
-	"style":  true,
-	"title":  true,
-}
+type tagKind int
 
-var tagSingleBlock = map[string]bool{
-	"br": true,
-	"hr": true,
-}
+const (
+	tagKindNormal tagKind = iota
+	tagKindSkip
+	tagKindSingleBlock
+	tagKindBlock
+	tagKindInlineBlock
+	tagKindParagraph
+)
 
-var tagBlock = map[string]bool{
-	"div":    true,
-	"tr":     true,
-	"dt":     true,
-	"dd":     true,
-	"option": true,
-}
+var tagConfig = map[string]tagKind{
+	"head":   tagKindSkip,
+	"script": tagKindSkip,
+	"style":  tagKindSkip,
+	"title":  tagKindSkip,
 
-var tagParagraph = map[string]bool{
-	"p":          true,
-	"pre":        true,
-	"blockquote": true,
-	"h1":         true,
-	"h2":         true,
-	"h3":         true,
-	"h4":         true,
-	"h5":         true,
-	"h6":         true,
-	"ul":         true,
-	"ol":         true,
-}
+	"br": tagKindSingleBlock,
+	"hr": tagKindSingleBlock,
 
-var tagInlineBlock = map[string]bool{
-	// "button": true,
-	"input": true,
-	"td":    true,
-	"li":    true,
+	"div":     tagKindBlock,
+	"tr":      tagKindBlock,
+	"dt":      tagKindBlock,
+	"dd":      tagKindBlock,
+	"option":  tagKindBlock,
+	"section": tagKindBlock,
+	"main":    tagKindBlock,
+	"header":  tagKindBlock,
+	"nav":     tagKindBlock,
+	"article": tagKindBlock,
+
+	"p":          tagKindParagraph,
+	"pre":        tagKindParagraph,
+	"blockquote": tagKindParagraph,
+	"h1":         tagKindParagraph,
+	"h2":         tagKindParagraph,
+	"h3":         tagKindParagraph,
+	"h4":         tagKindParagraph,
+	"h5":         tagKindParagraph,
+	"h6":         tagKindParagraph,
+	"ul":         tagKindParagraph,
+	"ol":         tagKindParagraph,
+
+	"input": tagKindInlineBlock,
+	"td":    tagKindInlineBlock,
+	"li":    tagKindInlineBlock,
 }
 
 func HTMLToText(r io.Reader) ([]byte, error) {
@@ -73,12 +80,15 @@ parseHTML:
 
 		case htmlParser.StartTagToken, htmlParser.SelfClosingTagToken:
 			tn, _ := z.TagName()
-			skip = tagSkip[string(tn)] // TODO: aria-hidden
-			if tagSingleBlock[string(tn)] {
+			kind := tagConfig[string(tn)]
+
+			skip = kind == tagKindSkip // TODO: aria-hidden
+			switch kind {
+			case tagKindSingleBlock:
 				w.InsertNewline()
-			} else if tagParagraph[string(tn)] {
+			case tagKindParagraph:
 				w.InsertParagraph()
-			} else if tagBlock[string(tn)] {
+			case tagKindBlock:
 				w.InsertNewline()
 			}
 			if string(tn) == "img" {
@@ -95,12 +105,15 @@ parseHTML:
 
 		case htmlParser.EndTagToken:
 			tn, _ := z.TagName()
-			skip = tagSkip[string(tn)]
-			if tagBlock[string(tn)] {
+			kind := tagConfig[string(tn)]
+
+			skip = kind == tagKindSkip
+			switch kind {
+			case tagKindBlock:
 				w.InsertNewline()
-			} else if tagParagraph[string(tn)] {
+			case tagKindParagraph:
 				w.InsertParagraph()
-			} else if tagInlineBlock[string(tn)] {
+			case tagKindInlineBlock:
 				w.InsertNewline()
 			}
 		}
