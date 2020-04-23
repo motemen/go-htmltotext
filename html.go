@@ -2,6 +2,8 @@ package htmltotext
 
 import (
 	"bytes"
+	"context"
+	"errors"
 	"fmt"
 	"html"
 	"io"
@@ -19,6 +21,12 @@ const (
 	tagKindInlineBlock
 	tagKindParagraph
 )
+
+type contextKey struct {
+	name string
+}
+
+var ContextKeyPageURL = &contextKey{"url"}
 
 var tagConfig = map[string]tagKind{
 	"head":   tagKindSkip,
@@ -59,9 +67,33 @@ var tagConfig = map[string]tagKind{
 	"td":    tagKindInlineBlock,
 }
 
-func HTMLToText(r io.Reader) ([]byte, error) {
-	var buf bytes.Buffer
-	w := newSqueezingWriter(&buf)
+var ErrSkipTag = errors.New("htmltotext: skip this tag")
+
+type TagHandler func(context.Context, htmlParser.Token, io.Writer) error
+
+type Config struct {
+	TagHandlers map[string]TagHandler
+}
+
+var DefaultTagHandlers = map[string]TagHandler{
+	"img": func(ctx context.Context, token htmlParser.Token, w io.Writer) error {
+		for _, attr := range token.Attr {
+			if attr.Key == "alt" {
+				w.Write([]byte(attr.Val))
+				break
+			}
+		}
+
+		return nil
+	},
+}
+
+func (conf Config) Convert(ctx context.Context, r io.Reader, w io.Writer) error {
+	if conf.TagHandlers == nil {
+		conf.TagHandlers = DefaultTagHandlers
+	}
+
+	sw := newSqueezingWriter(w)
 
 	z := htmlParser.NewTokenizer(r)
 	var skip bool
@@ -73,36 +105,37 @@ parseHTML:
 			if z.Err() == io.EOF {
 				break parseHTML
 			}
-			return nil, fmt.Errorf("parsing html: %w", z.Err())
+			return fmt.Errorf("parsing html: %w", z.Err())
 
 		case htmlParser.TextToken:
 			if !skip {
-				io.WriteString(w, html.UnescapeString(string(z.Text())))
+				io.WriteString(sw, html.UnescapeString(string(z.Text())))
 			}
 
 		case htmlParser.StartTagToken, htmlParser.SelfClosingTagToken:
-			tn, _ := z.TagName()
-			kind := tagConfig[string(tn)]
+			token := z.Token()
+			kind := tagConfig[token.Data]
 
 			skip = kind == tagKindSkip // TODO: aria-hidden
 			switch kind {
 			case tagKindSingleBlock:
-				w.InsertNewline()
+				sw.InsertNewline()
 			case tagKindParagraph:
-				w.InsertParagraph()
+				sw.InsertParagraph()
 			case tagKindBlock:
-				w.InsertNewline()
+				sw.InsertNewline()
 			}
-			if string(tn) == "img" {
-				for {
-					k, v, more := z.TagAttr()
-					if string(k) == "alt" {
-						w.Write(v)
-					}
-					if !more {
-						break
-					}
+
+			if handler, ok := conf.TagHandlers[token.Data]; ok {
+				var buf bytes.Buffer
+				err := handler(ctx, token, &buf)
+				if err == ErrSkipTag {
+					skip = true
+				} else if err != nil {
+					return err
 				}
+
+				io.WriteString(sw, buf.String())
 			}
 
 		case htmlParser.EndTagToken:
@@ -112,14 +145,14 @@ parseHTML:
 			skip = kind == tagKindSkip
 			switch kind {
 			case tagKindBlock:
-				w.InsertNewline()
+				sw.InsertNewline()
 			case tagKindParagraph:
-				w.InsertParagraph()
+				sw.InsertParagraph()
 			case tagKindInlineBlock:
-				w.InsertSpace()
+				sw.InsertSpace()
 			}
 		}
 	}
 
-	return buf.Bytes(), nil
+	return nil
 }
