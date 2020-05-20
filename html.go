@@ -142,7 +142,7 @@ parseHTML:
 			tn, _ := z.TagName()
 			kind := tagConfig[string(tn)]
 
-			skip = kind == tagKindSkip
+			skip = false
 			switch kind {
 			case tagKindBlock:
 				sw.InsertNewline()
