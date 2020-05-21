@@ -226,6 +226,10 @@ parseHTML:
 			token := z.Token()
 			kind := tagConfig[token.Data]
 
+			if token.Data == "noscript" || token.Data == "noframes" {
+				z.NextIsNotRawText()
+			}
+
 			skip = kind == tagKindSkip // TODO: aria-hidden
 			switch kind {
 			case tagKindSingleBlock:
