@@ -104,27 +104,27 @@ var FrameRecurseHandler = func(ctx context.Context, token htmlParser.Token, w io
 	u := ctx.Value(ContextKeyURL).(*url.URL)
 	for _, attr := range token.Attr {
 		if attr.Key == "src" {
-			rel, err := url.Parse(attr.Val)
-			if err != nil {
-				errc <- err
-				return
-			}
+			go func() {
+				rel, err := url.Parse(attr.Val)
+				if err != nil {
+					errc <- err
+				}
 
-			rel = u.ResolveReference(rel)
+				rel = u.ResolveReference(rel)
 
-			httpClient := conf.httpClient
-			if httpClient == nil {
-				httpClient = http.DefaultClient
-			}
-			resp, err := httpClient.Get(rel.String())
-			if err != nil {
-				errc <- err
-				return
-			}
+				httpClient := conf.httpClient
+				if httpClient == nil {
+					httpClient = http.DefaultClient
+				}
+				resp, err := httpClient.Get(rel.String())
+				if err != nil {
+					errc <- err
+				}
 
-			defer resp.Body.Close()
-			ctx = context.WithValue(ctx, ContextKeyURL, rel)
-			errc <- conf.Convert(ctx, resp.Body, w)
+				defer resp.Body.Close()
+				ctx = context.WithValue(ctx, ContextKeyURL, rel)
+				errc <- conf.Convert(ctx, resp.Body, w)
+			}()
 			return
 		}
 	}
@@ -180,11 +180,6 @@ func depthFromContext(ctx context.Context) int {
 	return depth
 }
 
-func urlFromContext(ctx context.Context) *url.URL {
-	u, _ := ctx.Value(ContextKeyURL).(*url.URL)
-	return u
-}
-
 func (conf *Config) Convert(ctx context.Context, r io.Reader, w io.Writer) error {
 	if depthFromContext(ctx) > conf.maxDepth && conf.maxDepth != -1 {
 		return nil
@@ -226,10 +221,6 @@ parseHTML:
 			token := z.Token()
 			kind := tagConfig[token.Data]
 
-			if token.Data == "noscript" || token.Data == "noframes" {
-				z.NextIsNotRawText()
-			}
-
 			skip = kind == tagKindSkip // TODO: aria-hidden
 			switch kind {
 			case tagKindSingleBlock:
@@ -254,7 +245,7 @@ parseHTML:
 					} else if err != nil {
 						return err
 					} else {
-						fmt.Fprint(sw.sync, buf.String())
+						sw.Write(buf.Bytes())
 					}
 
 				default:
@@ -264,9 +255,15 @@ parseHTML:
 							return err
 						}
 
-						fmt.Fprint(sw.sync, buf.String())
+						// FIXME make selectable by handler's return value
+						sw.sync.InsertParagraph()
+						sw.sync.Write(buf.Bytes())
 						return nil
 					}
+				}
+			} else {
+				if token.Data == "noscript" || token.Data == "noframes" {
+					z.NextIsNotRawText()
 				}
 			}
 
