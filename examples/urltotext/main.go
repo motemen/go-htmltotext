@@ -1,18 +1,13 @@
-// +build demo
-
 package main
 
 import (
-	"bytes"
 	"context"
-	"fmt"
 	"io"
 	"log"
 	"net/http"
 	"net/url"
 	"os"
 
-	"golang.org/x/net/html"
 	"golang.org/x/net/html/charset"
 
 	_ "github.com/motemen/go-loghttp/global"
@@ -20,42 +15,57 @@ import (
 	htmltotext "github.com/motemen/go-htmltotext"
 )
 
-func getContent(u *url.URL) (io.Reader, error) {
-	resp, err := http.Get(u.String())
-	if err != nil {
-		return nil, err
+type CharsetTransport struct {
+	Base http.RoundTripper
+}
+
+type readCloser struct {
+	io.Reader
+	io.Closer
+}
+
+func (t *CharsetTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	base := t.Base
+	if base == nil {
+		base = http.DefaultTransport
 	}
 
-	return charset.NewReader(resp.Body, resp.Header.Get("Content-Type"))
+	resp, err := base.RoundTrip(req)
+	if err != nil {
+		return resp, err
+	}
+
+	r, err := charset.NewReader(resp.Body, resp.Header.Get("Content-Type"))
+	if err != nil {
+		return resp, err
+	}
+
+	resp.Body = &readCloser{
+		Reader: r,
+		Closer: resp.Body,
+	}
+	return resp, nil
 }
 
 func main() {
 	u, _ := url.Parse(os.Args[1])
-	r, _ := getContent(u)
 
-	var conf htmltotext.Config
-	conf.TagHandlers = htmltotext.DefaultTagHandlers
-	conf.TagHandlers["frame"] = func(ctx context.Context, token html.Token, w io.Writer) error {
-		for _, attr := range token.Attr {
-			if attr.Key == "src" {
-				rel, _ := url.Parse(attr.Val)
-				rel = u.ResolveReference(rel)
-				r, _ := getContent(rel)
-				return conf.Convert(ctx, r, w)
-			}
-		}
-
-		return nil
-	}
-	conf.TagHandlers["noframes"] = func(ctx context.Context, token html.Token, w io.Writer) error {
-		return htmltotext.ErrSkipTag
+	client := &http.Client{
+		Transport: &CharsetTransport{},
 	}
 
-	var buf bytes.Buffer
-	err := conf.Convert(context.Background(), r, &buf)
+	conf := htmltotext.New(
+		htmltotext.WithFramesSupport(),
+		htmltotext.WithHTTPClient(client),
+	)
+
+	ctx := context.Background()
+	ctx = context.WithValue(ctx, htmltotext.ContextKeyURL, u)
+
+	resp, _ := client.Get(u.String())
+
+	err := conf.Convert(ctx, resp.Body, os.Stdout)
 	if err != nil {
 		log.Fatal(err)
 	}
-
-	fmt.Println(buf.String())
 }

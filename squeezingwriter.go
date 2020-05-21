@@ -141,3 +141,40 @@ func trimSpaces(s string) (string, bool, bool) {
 func debugf(format string, args ...interface{}) {
 	log.Printf(format, args...)
 }
+
+type squeezingWriterQueue struct {
+	sync  *squeezingWriter
+	queue chan func() error
+}
+
+func (q *squeezingWriterQueue) Write(p []byte) (int, error) {
+	s := make([]byte, len(p))
+	copy(s, p)
+
+	q.queue <- func() error {
+		_, err := q.sync.Write(s)
+		return err
+	}
+	return 0, nil
+}
+
+func (q *squeezingWriterQueue) InsertSpace() {
+	q.queue <- func() error {
+		q.sync.InsertSpace()
+		return nil
+	}
+}
+
+func (q *squeezingWriterQueue) InsertNewline() {
+	q.queue <- func() error {
+		q.sync.InsertNewline()
+		return nil
+	}
+}
+
+func (q *squeezingWriterQueue) InsertParagraph() {
+	q.queue <- func() error {
+		q.sync.InsertParagraph()
+		return nil
+	}
+}

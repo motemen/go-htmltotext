@@ -25,7 +25,7 @@ func TestParseHTMLToText(t *testing.T) {
 			}
 
 			var buf bytes.Buffer
-			err = Config{}.Convert(context.Background(), f, &buf)
+			err = New().Convert(context.Background(), f, &buf)
 			if err != nil {
 				t.Fatal(err)
 			}

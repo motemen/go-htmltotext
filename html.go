@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"html"
 	"io"
+	"net/http"
+	"net/url"
 
 	htmlParser "golang.org/x/net/html"
 )
@@ -21,12 +23,6 @@ const (
 	tagKindInlineBlock
 	tagKindParagraph
 )
-
-type contextKey struct {
-	name string
-}
-
-var ContextKeyPageURL = &contextKey{"url"}
 
 var tagConfig = map[string]tagKind{
 	"head":   tagKindSkip,
@@ -69,14 +65,29 @@ var tagConfig = map[string]tagKind{
 
 var ErrSkipTag = errors.New("htmltotext: skip this tag")
 
-type TagHandler func(context.Context, htmlParser.Token, io.Writer) error
-
-type Config struct {
-	TagHandlers map[string]TagHandler
+func New(opts ...Option) *Config {
+	config := &Config{
+		handlers: DefaultTagHandlers,
+		maxDepth: DefaultMaxDepth,
+	}
+	for _, o := range opts {
+		o(config)
+	}
+	return config
 }
 
-var DefaultTagHandlers = map[string]TagHandler{
-	"img": func(ctx context.Context, token htmlParser.Token, w io.Writer) error {
+type Handler func(context.Context, htmlParser.Token, io.Writer, chan error)
+
+type Config struct {
+	handlers   map[string]Handler
+	maxDepth   int
+	httpClient *http.Client
+}
+
+var DefaultMaxDepth = 2
+
+var DefaultTagHandlers = map[string]Handler{
+	"img": func(ctx context.Context, token htmlParser.Token, w io.Writer, errc chan error) {
 		for _, attr := range token.Attr {
 			if attr.Key == "alt" {
 				w.Write([]byte(attr.Val))
@@ -84,16 +95,115 @@ var DefaultTagHandlers = map[string]TagHandler{
 			}
 		}
 
-		return nil
+		errc <- nil
 	},
 }
 
-func (conf Config) Convert(ctx context.Context, r io.Reader, w io.Writer) error {
-	if conf.TagHandlers == nil {
-		conf.TagHandlers = DefaultTagHandlers
+var FrameRecurseHandler = func(ctx context.Context, token htmlParser.Token, w io.Writer, errc chan error) {
+	conf := FromContext(ctx)
+	u := ctx.Value(ContextKeyURL).(*url.URL)
+	for _, attr := range token.Attr {
+		if attr.Key == "src" {
+			rel, err := url.Parse(attr.Val)
+			if err != nil {
+				errc <- err
+				return
+			}
+
+			rel = u.ResolveReference(rel)
+
+			httpClient := conf.httpClient
+			if httpClient == nil {
+				httpClient = http.DefaultClient
+			}
+			resp, err := httpClient.Get(rel.String())
+			if err != nil {
+				errc <- err
+				return
+			}
+
+			defer resp.Body.Close()
+			ctx = context.WithValue(ctx, ContextKeyURL, rel)
+			errc <- conf.Convert(ctx, resp.Body, w)
+			return
+		}
 	}
 
-	sw := newSqueezingWriter(w)
+	errc <- nil
+}
+
+var NoframesSkipHandler = func(ctx context.Context, token htmlParser.Token, w io.Writer, errc chan error) {
+	errc <- ErrSkipTag
+}
+
+type Option func(*Config)
+
+func WithHandler(tag string, h Handler) Option {
+	return func(conf *Config) {
+		conf.handlers[tag] = h
+	}
+}
+
+func WithMaxDepth(depth int) Option {
+	return func(conf *Config) {
+		conf.maxDepth = depth
+	}
+}
+
+func WithHTTPClient(httpClient *http.Client) Option {
+	return func(conf *Config) {
+		conf.httpClient = httpClient
+	}
+}
+
+func WithFramesSupport() Option {
+	return func(conf *Config) {
+		WithHandler("frame", FrameRecurseHandler)(conf)
+		WithHandler("noframes", NoframesSkipHandler)(conf)
+	}
+}
+
+type ContextKey struct{ string }
+
+var (
+	ContextKeyConfig = ContextKey{"config"}
+	ContextKeyDepth  = ContextKey{"depth"}
+	ContextKeyURL    = ContextKey{"url"}
+)
+
+func FromContext(ctx context.Context) *Config {
+	return ctx.Value(ContextKeyConfig).(*Config)
+}
+
+func depthFromContext(ctx context.Context) int {
+	depth, _ := ctx.Value(ContextKeyDepth).(int)
+	return depth
+}
+
+func urlFromContext(ctx context.Context) *url.URL {
+	u, _ := ctx.Value(ContextKeyURL).(*url.URL)
+	return u
+}
+
+func (conf *Config) Convert(ctx context.Context, r io.Reader, w io.Writer) error {
+	if depthFromContext(ctx) > conf.maxDepth && conf.maxDepth != -1 {
+		return nil
+	}
+
+	ctx = context.WithValue(ctx, ContextKeyConfig, conf)
+
+	var buf bytes.Buffer
+
+	sw := &squeezingWriterQueue{
+		sync:  newSqueezingWriter(&buf),
+		queue: make(chan func() error),
+	}
+
+	go func() {
+		for f := range sw.queue {
+			_ = f()
+		}
+	}()
 
 	z := htmlParser.NewTokenizer(r)
 	var skip bool
@@ -126,16 +236,34 @@ parseHTML:
 				sw.InsertNewline()
 			}
 
-			if handler, ok := conf.TagHandlers[token.Data]; ok {
-				var buf bytes.Buffer
-				err := handler(ctx, token, &buf)
-				if err == ErrSkipTag {
-					skip = true
-				} else if err != nil {
-					return err
-				}
+			if handler, ok := conf.handlers[token.Data]; ok {
+				errc := make(chan error, 1)
 
-				io.WriteString(sw, buf.String())
+				var buf bytes.Buffer
+				ctx := context.WithValue(ctx, ContextKeyDepth, depthFromContext(ctx)+1)
+				handler(ctx, token, &buf, errc)
+
+				select {
+				case err := <-errc:
+					if err == ErrSkipTag {
+						skip = true
+					} else if err != nil {
+						return err
+					} else {
+						fmt.Fprint(sw.sync, buf.String())
+					}
+
+				default:
+					sw.queue <- func() error {
+						err := <-errc
+						if err != nil {
+							return err
+						}
+
+						fmt.Fprint(sw.sync, buf.String())
+						return nil
+					}
+				}
 			}
 
 		case htmlParser.EndTagToken:
@@ -154,5 +282,8 @@ parseHTML:
 		}
 	}
 
-	return nil
+	close(sw.queue)
+
+	_, err := io.Copy(w, &buf)
+	return err
 }
