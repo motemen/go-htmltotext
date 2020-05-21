@@ -2,56 +2,22 @@ package main
 
 import (
 	"context"
-	"io"
 	"log"
 	"net/http"
 	"net/url"
 	"os"
 
-	"golang.org/x/net/html/charset"
-
 	_ "github.com/motemen/go-loghttp/global"
+	"github.com/motemen/go-nuts/httputil"
 
 	htmltotext "github.com/motemen/go-htmltotext"
 )
-
-type CharsetTransport struct {
-	Base http.RoundTripper
-}
-
-type readCloser struct {
-	io.Reader
-	io.Closer
-}
-
-func (t *CharsetTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	base := t.Base
-	if base == nil {
-		base = http.DefaultTransport
-	}
-
-	resp, err := base.RoundTrip(req)
-	if err != nil {
-		return resp, err
-	}
-
-	r, err := charset.NewReader(resp.Body, resp.Header.Get("Content-Type"))
-	if err != nil {
-		return resp, err
-	}
-
-	resp.Body = &readCloser{
-		Reader: r,
-		Closer: resp.Body,
-	}
-	return resp, nil
-}
 
 func main() {
 	u, _ := url.Parse(os.Args[1])
 
 	client := &http.Client{
-		Transport: &CharsetTransport{},
+		Transport: &httputil.CharsetTransport{},
 	}
 
 	conf := htmltotext.New(
