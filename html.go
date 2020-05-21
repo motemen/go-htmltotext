@@ -108,6 +108,7 @@ var FrameRecurseHandler = func(ctx context.Context, token htmlParser.Token, w io
 				rel, err := url.Parse(attr.Val)
 				if err != nil {
 					errc <- err
+					return
 				}
 
 				rel = u.ResolveReference(rel)
@@ -119,6 +120,7 @@ var FrameRecurseHandler = func(ctx context.Context, token htmlParser.Token, w io
 				resp, err := httpClient.Get(rel.String())
 				if err != nil {
 					errc <- err
+					return
 				}
 
 				defer resp.Body.Close()
@@ -191,13 +193,15 @@ func (conf *Config) Convert(ctx context.Context, r io.Reader, w io.Writer) error
 
 	sw := &squeezingWriterQueue{
 		sync:  newSqueezingWriter(&buf),
-		queue: make(chan func() error),
+		queue: make(chan func() error, 5),
 	}
 
+	done := make(chan struct{})
 	go func() {
 		for f := range sw.queue {
 			_ = f()
 		}
+		done <- struct{}{}
 	}()
 
 	z := htmlParser.NewTokenizer(r)
@@ -284,6 +288,7 @@ parseHTML:
 	}
 
 	close(sw.queue)
+	<-done
 
 	_, err := io.Copy(w, &buf)
 	return err
