@@ -51,6 +51,37 @@ func TestSpaceSqueezingWriter(t *testing.T) {
 	if diff := cmp.Diff("hoge fuga 1 2 3 4", buf.String()); diff != "" {
 		t.Errorf("%s", diff)
 	}
+
+	w.InsertNewline()
+	if diff := cmp.Diff("hoge fuga 1 2 3 4", buf.String()); diff != "" {
+		t.Errorf("%s", diff)
+	}
+
+	w.writeNonspace(nil) // flush
+	if diff := cmp.Diff("hoge fuga 1 2 3 4\n", buf.String()); diff != "" {
+		t.Errorf("%s", diff)
+	}
+
+	w.InsertNewline()
+	if diff := cmp.Diff("hoge fuga 1 2 3 4\n", buf.String()); diff != "" {
+		t.Errorf("%s", diff)
+	}
+	w.InsertSpace()
+	if diff := cmp.Diff("hoge fuga 1 2 3 4\n\n", buf.String()); diff != "" {
+		t.Errorf("%s", diff)
+	}
+	w.Write([]byte{'a'})
+	if diff := cmp.Diff("hoge fuga 1 2 3 4\n\na", buf.String()); diff != "" {
+		t.Errorf("%s", diff)
+	}
+	w.InsertNewline()
+	w.InsertSpace()
+	w.InsertParagraph()
+	w.Write([]byte{'x'})
+	// XXX
+	if diff := cmp.Diff("hoge fuga 1 2 3 4\n\na\n\n\nx", buf.String()); diff != "" {
+		t.Errorf("%s", diff)
+	}
 }
 
 func TestSpaceSqueezingWriter_2(t *testing.T) {

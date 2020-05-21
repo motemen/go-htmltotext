@@ -3,7 +3,6 @@ package htmltotext
 import (
 	"fmt"
 	"io"
-	"log"
 	"strings"
 	"unicode"
 )
@@ -90,7 +89,7 @@ func (w *squeezingWriter) InsertSpace() {
 		w.state = stateSpace
 	case stateSpace:
 	case stateNewline:
-		w.writeNonspace([]byte{'\n'})
+		w.writeNonspace(nil)
 		w.state = stateStart
 	case stateParagraph:
 	case stateStart:
@@ -136,10 +135,6 @@ func trimSpaces(s string) (string, bool, bool) {
 	s, leading := trimSpace(strings.TrimLeftFunc, s)
 	s, trailing := trimSpace(strings.TrimRightFunc, s)
 	return s, leading, trailing
-}
-
-func debugf(format string, args ...interface{}) {
-	log.Printf(format, args...)
 }
 
 type squeezingWriterQueue struct {
