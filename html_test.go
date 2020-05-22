@@ -22,6 +22,7 @@ func TestConvert(t *testing.T) {
 	conf := New(
 		WithFramesSupport(),
 		WithHTTPClient(client),
+		WithMaxDepth(1),
 	)
 	files, err := filepath.Glob("testdata/*.html")
 	if err != nil {

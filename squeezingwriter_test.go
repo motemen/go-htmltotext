@@ -13,75 +13,64 @@ func TestSpaceSqueezingWriter(t *testing.T) {
 	var buf bytes.Buffer
 	w := newSqueezingWriter(&buf)
 
-	fmt.Fprint(w, "  hoge  ")
-	if diff := cmp.Diff("hoge", buf.String()); diff != "" {
-		t.Errorf("%s", diff)
+	assertBuf := func(expected string) {
+		t.Helper()
+		if diff := cmp.Diff(expected, buf.String()); diff != "" {
+			t.Errorf("(-expected +got):\n%s", diff)
+		}
 	}
+
+	fmt.Fprint(w, "  hoge  ")
+	assertBuf("hoge")
 
 	fmt.Fprint(w, "  fuga  ")
-	if diff := cmp.Diff("hoge fuga", buf.String()); diff != "" {
-		t.Errorf("%s", diff)
-	}
+	assertBuf("hoge fuga")
 
 	fmt.Fprint(w, "1")
-	if diff := cmp.Diff("hoge fuga 1", buf.String()); diff != "" {
-		t.Errorf("%s", diff)
-	}
+	assertBuf("hoge fuga 1")
+
 	fmt.Fprint(w, " 2 ")
-	if diff := cmp.Diff("hoge fuga 1 2", buf.String()); diff != "" {
-		t.Errorf("%s", diff)
-	}
+	assertBuf("hoge fuga 1 2")
+
 	w.InsertSpace()
-	if diff := cmp.Diff("hoge fuga 1 2", buf.String()); diff != "" {
-		t.Errorf("%s", diff)
-	}
+	assertBuf("hoge fuga 1 2")
+
 	fmt.Fprint(w, "")
-	if diff := cmp.Diff("hoge fuga 1 2", buf.String()); diff != "" {
-		t.Errorf("%s", diff)
-	}
+	assertBuf("hoge fuga 1 2")
+
 	fmt.Fprint(w, "3")
-	if diff := cmp.Diff("hoge fuga 1 2 3", buf.String()); diff != "" {
-		t.Errorf("%s", diff)
-	}
+	assertBuf("hoge fuga 1 2 3")
+
 	w.InsertSpace()
-	if diff := cmp.Diff("hoge fuga 1 2 3", buf.String()); diff != "" {
-		t.Errorf("%s", diff)
-	}
+	assertBuf("hoge fuga 1 2 3")
+
 	fmt.Fprint(w, "4")
-	if diff := cmp.Diff("hoge fuga 1 2 3 4", buf.String()); diff != "" {
-		t.Errorf("%s", diff)
-	}
+	assertBuf("hoge fuga 1 2 3 4")
 
 	w.InsertNewline()
-	if diff := cmp.Diff("hoge fuga 1 2 3 4", buf.String()); diff != "" {
-		t.Errorf("%s", diff)
-	}
+	assertBuf("hoge fuga 1 2 3 4")
 
 	w.writeNonspace(nil) // flush
-	if diff := cmp.Diff("hoge fuga 1 2 3 4\n", buf.String()); diff != "" {
-		t.Errorf("%s", diff)
-	}
+	assertBuf("hoge fuga 1 2 3 4\n")
 
 	w.InsertNewline()
-	if diff := cmp.Diff("hoge fuga 1 2 3 4\n", buf.String()); diff != "" {
-		t.Errorf("%s", diff)
-	}
+	assertBuf("hoge fuga 1 2 3 4\n")
+
 	w.InsertSpace()
-	if diff := cmp.Diff("hoge fuga 1 2 3 4\n\n", buf.String()); diff != "" {
-		t.Errorf("%s", diff)
-	}
+	assertBuf("hoge fuga 1 2 3 4\n\n")
+
 	w.Write([]byte{'a'})
-	if diff := cmp.Diff("hoge fuga 1 2 3 4\n\na", buf.String()); diff != "" {
-		t.Errorf("%s", diff)
-	}
+	assertBuf("hoge fuga 1 2 3 4\n\na")
+
+	// InsertParagraph on stateStart
 	w.InsertNewline()
 	w.InsertSpace()
+	if w.state != stateStart {
+		t.Fatalf("expected w.state == stateStart; got %v", w.state)
+	}
 	w.InsertParagraph()
 	w.Write([]byte{'x'})
-	// XXX
-	if diff := cmp.Diff("hoge fuga 1 2 3 4\n\na\n\n\nx", buf.String()); diff != "" {
-		t.Errorf("%s", diff)
-	}
+	assertBuf("hoge fuga 1 2 3 4\n\na\n\n\nx")
 }
 
 func TestSpaceSqueezingWriter_2(t *testing.T) {
