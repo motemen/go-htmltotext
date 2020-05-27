@@ -21,7 +21,7 @@ func main() {
 	}
 
 	conf := htmltotext.New(
-		htmltotext.WithFramesSupport(),
+		htmltotext.WithFramesSupport(nil),
 		htmltotext.WithHTTPClient(client),
 	)
 

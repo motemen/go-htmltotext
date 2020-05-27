@@ -78,6 +78,8 @@ func New(opts ...Option) *Config {
 
 type Handler func(context.Context, htmlParser.Token, io.Writer, chan error)
 
+type RecurseHandler func(ctx context.Context, httpClient *http.Client, u *url.URL, w io.Writer) error
+
 type Config struct {
 	handlers   map[string]Handler
 	maxDepth   int
@@ -99,39 +101,52 @@ var DefaultTagHandlers = map[string]Handler{
 	},
 }
 
-var FrameRecurseHandler = func(ctx context.Context, token htmlParser.Token, w io.Writer, errc chan error) {
+var DefaultRecurseHandler = func(ctx context.Context, httpClient *http.Client, u *url.URL, w io.Writer) error {
+	resp, err := httpClient.Get(u.String())
+	if err != nil {
+		return err
+	}
+
+	defer resp.Body.Close()
+	ctx = context.WithValue(ctx, ContextKeyURL, u)
 	conf := FromContext(ctx)
-	u := ctx.Value(ContextKeyURL).(*url.URL)
-	for _, attr := range token.Attr {
-		if attr.Key == "src" {
+	return conf.Convert(ctx, resp.Body, w)
+}
+
+var FrameRecurseHandler = func(recurse RecurseHandler) func(ctx context.Context, token htmlParser.Token, w io.Writer, errc chan error) {
+	if recurse == nil {
+		recurse = DefaultRecurseHandler
+	}
+
+	return func(ctx context.Context, token htmlParser.Token, w io.Writer, errc chan error) {
+		conf := FromContext(ctx)
+		u := ctx.Value(ContextKeyURL).(*url.URL)
+		for _, attr := range token.Attr {
+			if attr.Key != "src" {
+				continue
+			}
+
+			rel, err := url.Parse(attr.Val)
+			if err != nil {
+				errc <- err
+				return
+			}
+
+			rel = u.ResolveReference(rel)
+
+			httpClient := conf.httpClient
+			if httpClient == nil {
+				httpClient = http.DefaultClient
+			}
+
 			go func() {
-				rel, err := url.Parse(attr.Val)
-				if err != nil {
-					errc <- err
-					return
-				}
-
-				rel = u.ResolveReference(rel)
-
-				httpClient := conf.httpClient
-				if httpClient == nil {
-					httpClient = http.DefaultClient
-				}
-				resp, err := httpClient.Get(rel.String())
-				if err != nil {
-					errc <- err
-					return
-				}
-
-				defer resp.Body.Close()
-				ctx = context.WithValue(ctx, ContextKeyURL, rel)
-				errc <- conf.Convert(ctx, resp.Body, w)
+				errc <- recurse(ctx, httpClient, rel, w)
 			}()
 			return
 		}
-	}
 
-	errc <- nil
+		errc <- nil
+	}
 }
 
 var NoframesSkipHandler = func(ctx context.Context, token htmlParser.Token, w io.Writer, errc chan error) {
@@ -158,9 +173,9 @@ func WithHTTPClient(httpClient *http.Client) Option {
 	}
 }
 
-func WithFramesSupport() Option {
+func WithFramesSupport(recurse RecurseHandler) Option {
 	return func(conf *Config) {
-		WithHandler("frame", FrameRecurseHandler)(conf)
+		WithHandler("frame", FrameRecurseHandler(recurse))(conf)
 		WithHandler("noframes", NoframesSkipHandler)(conf)
 	}
 }
