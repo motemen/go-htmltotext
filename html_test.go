@@ -20,7 +20,7 @@ func TestConvert(t *testing.T) {
 	}
 
 	conf := New(
-		WithFramesSupport(),
+		WithFramesSupport(nil),
 		WithHTTPClient(client),
 		WithMaxDepth(1),
 	)

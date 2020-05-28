@@ -78,7 +78,7 @@ func New(opts ...Option) *Config {
 
 type Handler func(context.Context, htmlParser.Token, io.Writer, chan error)
 
-type RecurseHandler func(ctx context.Context, httpClient *http.Client, u *url.URL, w io.Writer) error
+type RecurseHandler func(ctx context.Context, u *url.URL, w io.Writer) error
 
 type Config struct {
 	handlers   map[string]Handler
@@ -101,7 +101,13 @@ var DefaultTagHandlers = map[string]Handler{
 	},
 }
 
-var DefaultRecurseHandler = func(ctx context.Context, httpClient *http.Client, u *url.URL, w io.Writer) error {
+var DefaultRecurseHandler = func(ctx context.Context, u *url.URL, w io.Writer) error {
+	conf := FromContext(ctx)
+	httpClient := conf.httpClient
+	if httpClient == nil {
+		httpClient = http.DefaultClient
+	}
+
 	resp, err := httpClient.Get(u.String())
 	if err != nil {
 		return err
@@ -109,7 +115,6 @@ var DefaultRecurseHandler = func(ctx context.Context, httpClient *http.Client, u
 
 	defer resp.Body.Close()
 	ctx = context.WithValue(ctx, ContextKeyURL, u)
-	conf := FromContext(ctx)
 	return conf.Convert(ctx, resp.Body, w)
 }
 
@@ -119,7 +124,6 @@ var FrameRecurseHandler = func(recurse RecurseHandler) func(ctx context.Context,
 	}
 
 	return func(ctx context.Context, token htmlParser.Token, w io.Writer, errc chan error) {
-		conf := FromContext(ctx)
 		u := ctx.Value(ContextKeyURL).(*url.URL)
 		for _, attr := range token.Attr {
 			if attr.Key != "src" {
@@ -134,13 +138,8 @@ var FrameRecurseHandler = func(recurse RecurseHandler) func(ctx context.Context,
 
 			rel = u.ResolveReference(rel)
 
-			httpClient := conf.httpClient
-			if httpClient == nil {
-				httpClient = http.DefaultClient
-			}
-
 			go func() {
-				errc <- recurse(ctx, httpClient, rel, w)
+				errc <- recurse(ctx, rel, w)
 			}()
 			return
 		}
