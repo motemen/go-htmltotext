@@ -254,6 +254,9 @@ parseHTML:
 
 				var buf bytes.Buffer
 				ctx := context.WithValue(ctx, ContextKeyDepth, depthFromContext(ctx)+1)
+				// XXX: experimental
+				ctx = context.WithValue(ctx, "r", r)
+				ctx = context.WithValue(ctx, "z", z)
 				handler(ctx, token, &buf, errc)
 
 				select {

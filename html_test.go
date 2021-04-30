@@ -3,8 +3,10 @@ package htmltotext
 import (
 	"bytes"
 	"context"
+	"io"
 	"net/http"
 	"net/url"
+	"strings"
 	"testing"
 
 	"io/ioutil"
@@ -12,6 +14,7 @@ import (
 	"path/filepath"
 
 	"github.com/google/go-cmp/cmp"
+	htmlParser "golang.org/x/net/html"
 )
 
 func TestConvert(t *testing.T) {
@@ -63,4 +66,34 @@ func TestConvert(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestConvert_Handler(t *testing.T) {
+	conf := New(
+		WithHandler("meta", func(ctx context.Context, token htmlParser.Token, w io.Writer, cerr chan error) {
+			t.Log(token)
+			cerr <- nil
+		}),
+		WithHandler("title", func(ctx context.Context, token htmlParser.Token, w io.Writer, cerr chan error) {
+			r := ctx.Value("r").(io.Reader)
+			z := ctx.Value("z").(*htmlParser.Tokenizer)
+			r = io.MultiReader(bytes.NewReader(z.Buffered()), r)
+			zz := htmlParser.NewTokenizerFragment(r, token.Data)
+			zz.Next()
+			t.Log(zz.Token(), zz.Err())
+			t.Log(token)
+			cerr <- nil
+		}),
+	)
+	r := strings.NewReader(`<html>
+		<head>
+			<title>Title</title>
+			<meta name="robots" content="noindex">
+		</head>
+		<body>
+		Hello
+		</body>
+	</html>`)
+	var buf bytes.Buffer
+	conf.Convert(context.Background(), r, &buf)
 }
