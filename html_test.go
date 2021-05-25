@@ -4,20 +4,19 @@ import (
 	"bytes"
 	"context"
 	"io"
+	"io/ioutil"
 	"net/http"
 	"net/url"
-	"strings"
-	"testing"
-
-	"io/ioutil"
 	"os"
 	"path/filepath"
+	"strings"
+	"testing"
 
 	"github.com/google/go-cmp/cmp"
 	htmlParser "golang.org/x/net/html"
 )
 
-func TestConvert(t *testing.T) {
+func TestConfig_Convert(t *testing.T) {
 	client := &http.Client{
 		Transport: http.NewFileTransport(http.Dir(".")),
 	}
@@ -68,32 +67,55 @@ func TestConvert(t *testing.T) {
 	}
 }
 
-func TestConvert_Handler(t *testing.T) {
+func TestConfig_Convert_Handler(t *testing.T) {
+	var title string
+	meta := map[string]string{}
 	conf := New(
 		WithHandler("meta", func(ctx context.Context, token htmlParser.Token, w io.Writer, cerr chan error) {
-			t.Log(token)
+			var k, v string
+			for _, a := range token.Attr {
+				if a.Key == "name" {
+					k = a.Val
+				} else if a.Key == "content" {
+					v = a.Val
+				}
+			}
+			meta[k] = v
 			cerr <- nil
 		}),
 		WithHandler("title", func(ctx context.Context, token htmlParser.Token, w io.Writer, cerr chan error) {
-			r := ctx.Value("r").(io.Reader)
-			z := ctx.Value("z").(*htmlParser.Tokenizer)
+			r := ctx.Value(ContextKeyExperimentalReader).(io.Reader)
+			z := ctx.Value(ContextKeyExperimentalTokenizer).(*htmlParser.Tokenizer)
 			r = io.MultiReader(bytes.NewReader(z.Buffered()), r)
 			zz := htmlParser.NewTokenizerFragment(r, token.Data)
 			zz.Next()
-			t.Log(zz.Token(), zz.Err())
-			t.Log(token)
-			cerr <- nil
+			title = zz.Token().String()
+			cerr <- zz.Err()
 		}),
 	)
 	r := strings.NewReader(`<html>
 		<head>
-			<title>Title</title>
+			<title>My Site</title>
 			<meta name="robots" content="noindex">
+			<meta name="author" content="motemen">
 		</head>
 		<body>
 		Hello
 		</body>
 	</html>`)
+
 	var buf bytes.Buffer
-	conf.Convert(context.Background(), r, &buf)
+	err := conf.Convert(context.Background(), r, &buf)
+	if err != nil {
+		t.Error(err)
+	}
+	if got, expected := title, "My Site"; got != expected {
+		t.Errorf("%q != %q", got, expected)
+	}
+	if diff := cmp.Diff(map[string]string{"robots": "noindex", "author": "motemen"}, meta); diff != "" {
+		t.Errorf("got diff:\n%s", diff)
+	}
+	if got, expected := buf.String(), "Hello"; got != expected {
+		t.Errorf("%q != %q", got, expected)
+	}
 }

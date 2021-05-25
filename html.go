@@ -29,6 +29,7 @@ var tagConfig = map[string]tagKind{
 	"script": tagKindSkip,
 	"style":  tagKindSkip,
 	"title":  tagKindSkip,
+	"iframe": tagKindSkip,
 
 	"br": tagKindSingleBlock,
 	"hr": tagKindSingleBlock,
@@ -68,7 +69,7 @@ var ErrSkipTag = errors.New("htmltotext: skip this tag")
 func New(opts ...Option) *Config {
 	config := &Config{
 		handlers: DefaultTagHandlers,
-		maxDepth: DefaultMaxDepth,
+		maxDepth: defaultMaxDepth,
 	}
 	for _, o := range opts {
 		o(config)
@@ -86,7 +87,7 @@ type Config struct {
 	httpClient *http.Client
 }
 
-var DefaultMaxDepth = 2
+const defaultMaxDepth = 2
 
 var DefaultTagHandlers = map[string]Handler{
 	"img": func(ctx context.Context, token htmlParser.Token, w io.Writer, errc chan error) {
@@ -148,7 +149,7 @@ var FrameRecurseHandler = func(recurse RecurseHandler) func(ctx context.Context,
 	}
 }
 
-var NoframesSkipHandler = func(ctx context.Context, token htmlParser.Token, w io.Writer, errc chan error) {
+var SkipAllHandler = func(ctx context.Context, token htmlParser.Token, w io.Writer, errc chan error) {
 	errc <- ErrSkipTag
 }
 
@@ -175,7 +176,7 @@ func WithHTTPClient(httpClient *http.Client) Option {
 func WithFramesSupport(recurse RecurseHandler) Option {
 	return func(conf *Config) {
 		WithHandler("frame", FrameRecurseHandler(recurse))(conf)
-		WithHandler("noframes", NoframesSkipHandler)(conf)
+		WithHandler("noframes", SkipAllHandler)(conf)
 	}
 }
 
@@ -185,6 +186,9 @@ var (
 	ContextKeyConfig = ContextKey{"config"}
 	ContextKeyDepth  = ContextKey{"depth"}
 	ContextKeyURL    = ContextKey{"url"}
+
+	ContextKeyExperimentalReader    = ContextKey{"reader"}
+	ContextKeyExperimentalTokenizer = ContextKey{"tokenizer"}
 )
 
 func FromContext(ctx context.Context) *Config {
@@ -255,8 +259,8 @@ parseHTML:
 				var buf bytes.Buffer
 				ctx := context.WithValue(ctx, ContextKeyDepth, depthFromContext(ctx)+1)
 				// XXX: experimental
-				ctx = context.WithValue(ctx, "r", r)
-				ctx = context.WithValue(ctx, "z", z)
+				ctx = context.WithValue(ctx, ContextKeyExperimentalReader, r)
+				ctx = context.WithValue(ctx, ContextKeyExperimentalTokenizer, z)
 				handler(ctx, token, &buf, errc)
 
 				select {
