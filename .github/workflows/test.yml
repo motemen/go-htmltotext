@@ -1,3 +1,5 @@
+name: Test
+
 on:
   push:
   pull_request:
@@ -10,12 +12,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
 
+    - uses: actions/checkout@v2
+
+    - name: staticcheck
+      uses: reviewdog/action-staticcheck@v1
+      with:
+        reporter: github-check
+
     - uses: actions/setup-go@v2
       with:
-        go-version: ^1.14
-
-    - uses: actions/checkout@v2
+        go-version: ^1.15
 
     - run: go test -v -coverprofile=cover.out
 
-    - uses: codecov/codecov-action@v1.0.6
+    - uses: codecov/codecov-action@v1
