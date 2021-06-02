@@ -84,13 +84,19 @@ func TestConfig_Convert_Handler(t *testing.T) {
 			cerr <- nil
 		}),
 		WithHandler("title", func(ctx context.Context, token htmlParser.Token, w io.Writer, cerr chan error) {
-			r := ctx.Value(ContextKeyExperimentalReader).(io.Reader)
 			z := ctx.Value(ContextKeyExperimentalTokenizer).(*htmlParser.Tokenizer)
-			r = io.MultiReader(bytes.NewReader(z.Buffered()), r)
-			zz := htmlParser.NewTokenizerFragment(r, token.Data)
-			zz.Next()
-			title = zz.Token().String()
-			cerr <- zz.Err()
+			z.Next()
+			title = z.Token().String()
+			cerr <- z.Err()
+			/*
+				r := ctx.Value(ContextKeyExperimentalReader).(io.Reader)
+				z := ctx.Value(ContextKeyExperimentalTokenizer).(*htmlParser.Tokenizer)
+				r = io.MultiReader(bytes.NewReader(z.Buffered()), r)
+				zz := htmlParser.NewTokenizerFragment(r, token.Data)
+				zz.Next()
+				title = zz.Token().String()
+				cerr <- zz.Err()
+			*/
 		}),
 	)
 	r := strings.NewReader(`<html>
