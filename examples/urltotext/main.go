@@ -17,7 +17,7 @@ func main() {
 	u, _ := url.Parse(os.Args[1])
 
 	client := &http.Client{
-		Transport: &httputil.CharsetTransport{},
+		Transport: &httputil.ChardetTransport{},
 	}
 
 	conf := htmltotext.New(
