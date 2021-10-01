@@ -86,7 +86,11 @@ func TestConfig_Convert_Handler(t *testing.T) {
 		WithHandler("title", func(ctx context.Context, token htmlParser.Token, w io.Writer, cerr chan error) {
 			z := ctx.Value(ContextKeyExperimentalTokenizer).(*htmlParser.Tokenizer)
 			z.Next()
-			title = z.Token().String()
+
+			tok := z.Token()
+			if tok.Type == htmlParser.TextToken {
+				title = tok.String()
+			}
 			cerr <- z.Err()
 			/*
 				r := ctx.Value(ContextKeyExperimentalReader).(io.Reader)
@@ -124,4 +128,22 @@ func TestConfig_Convert_Handler(t *testing.T) {
 	if got, expected := buf.String(), "Hello"; got != expected {
 		t.Errorf("%q != %q", got, expected)
 	}
+
+	t.Run("empty title", func(t *testing.T) {
+		title = ""
+		r := strings.NewReader(`<html>
+		<head>
+			<title></title>
+		</head>
+	</html>`)
+
+		var buf bytes.Buffer
+		err := conf.Convert(context.Background(), r, &buf)
+		if err != nil {
+			t.Error(err)
+		}
+		if got, expected := title, ""; got != expected {
+			t.Errorf("%q != %q", got, expected)
+		}
+	})
 }
