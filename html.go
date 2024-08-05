@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"regexp"
 
 	htmlParser "golang.org/x/net/html"
 )
@@ -97,6 +98,8 @@ type Config struct {
 
 const defaultMaxDepth = 2
 
+var rxDisplayNone = regexp.MustCompile(`^display\s*:\s*none;?$`)
+
 var DefaultTagHandlers = map[string]Handler{
 	"img": func(ctx context.Context, token htmlParser.Token, w io.Writer, errc chan error) {
 		for _, attr := range token.Attr {
@@ -110,7 +113,7 @@ var DefaultTagHandlers = map[string]Handler{
 	},
 	TagNameWildcard: func(ctx context.Context, token htmlParser.Token, w io.Writer, errc chan error) {
 		for _, attr := range token.Attr {
-			if attr.Key == "style" && attr.Val == "display:none" {
+			if attr.Key == "style" && rxDisplayNone.MatchString(attr.Val) {
 				errc <- ErrSkipTag
 				return
 			}
@@ -269,7 +272,7 @@ parseHTML:
 			token := z.Token()
 			kind := tagConfig[token.Data]
 
-			skip = kind == tagKindSkip // TODO: aria-hidden
+			skip = kind == tagKindSkip
 			switch kind {
 			case tagKindSingleBlock:
 				sw.InsertNewline()
