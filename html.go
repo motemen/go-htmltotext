@@ -64,13 +64,7 @@ var tagConfig = map[string]tagKind{
 	"td":    tagKindInlineBlock,
 }
 
-var (
-	// ErrSkipTag is returned by a Handler. It is used to indicate that the tag should be skipped.
-	ErrSkipTag = errors.New("htmltotext: skip this tag")
-	// ErrPassthrough is returned by a Handler.
-	// It is used to indicate that the handler did nothing and the tag should be handled by the default handler.
-	ErrPassthrough = errors.New("htmltotext: passthrough")
-)
+var ErrSkipTag = errors.New("htmltotext: skip this tag")
 
 func New(opts ...Option) *Config {
 	config := &Config{
@@ -82,8 +76,6 @@ func New(opts ...Option) *Config {
 	}
 	return config
 }
-
-const TagNameWildcard = "*"
 
 type Handler func(context.Context, htmlParser.Token, io.Writer, chan error)
 
@@ -107,24 +99,6 @@ var DefaultTagHandlers = map[string]Handler{
 		}
 
 		errc <- nil
-	},
-	TagNameWildcard: func(ctx context.Context, token htmlParser.Token, w io.Writer, errc chan error) {
-		for _, attr := range token.Attr {
-			if attr.Key == "style" && attr.Val == "display:none" {
-				errc <- ErrSkipTag
-				return
-			}
-			if attr.Key == "hidden" && (attr.Val == "" || attr.Val == "hidden") {
-				errc <- ErrSkipTag
-				return
-			}
-			if attr.Key == "aria-hidden" && attr.Val == "true" {
-				errc <- ErrSkipTag
-				return
-			}
-		}
-
-		errc <- ErrPassthrough
 	},
 }
 
@@ -279,13 +253,7 @@ parseHTML:
 				sw.InsertNewline()
 			}
 
-			handler, ok := conf.handlers[token.Data]
-			if !ok {
-				handler = conf.handlers[TagNameWildcard]
-			}
-
-			var handled bool
-			if handler != nil {
+			if handler, ok := conf.handlers[token.Data]; ok {
 				errc := make(chan error, 1)
 
 				var buf bytes.Buffer
@@ -297,11 +265,8 @@ parseHTML:
 
 				select {
 				case err := <-errc:
-					handled = true
 					if err == ErrSkipTag {
 						skip = true
-					} else if err == ErrPassthrough {
-						handled = false
 					} else if err != nil {
 						return err
 					} else {
@@ -321,9 +286,7 @@ parseHTML:
 						return nil
 					}
 				}
-			}
-
-			if !handled {
+			} else {
 				if token.Data == "noscript" || token.Data == "noframes" {
 					z.NextIsNotRawText()
 				}
