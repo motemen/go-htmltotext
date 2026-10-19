@@ -222,6 +222,18 @@ func (conf *Config) Convert(ctx context.Context, r io.Reader, w io.Writer) error
 		done <- struct{}{}
 	}()
 
+	// エラーで途中で return しても、上の goroutine がリークしないようにする
+	var queueClosed bool
+	closeQueue := func() {
+		if queueClosed {
+			return
+		}
+		queueClosed = true
+		close(sw.queue)
+		<-done
+	}
+	defer closeQueue()
+
 	z := htmlParser.NewTokenizer(r)
 	var skip bool
 parseHTML:
@@ -308,8 +320,7 @@ parseHTML:
 		}
 	}
 
-	close(sw.queue)
-	<-done
+	closeQueue()
 
 	_, err := io.Copy(w, &buf)
 	return err

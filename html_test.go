@@ -3,14 +3,17 @@ package htmltotext
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"io/ioutil"
 	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/go-cmp/cmp"
 	htmlParser "golang.org/x/net/html"
@@ -146,4 +149,29 @@ func TestConfig_Convert_Handler(t *testing.T) {
 			t.Errorf("%q != %q", got, expected)
 		}
 	})
+}
+
+func TestConfig_Convert_HandlerErrorDoesNotLeakGoroutine(t *testing.T) {
+	errTest := errors.New("test error")
+	conf := New(
+		WithHandler("title", func(ctx context.Context, token htmlParser.Token, w io.Writer, cerr chan error) {
+			cerr <- errTest
+		}),
+	)
+
+	before := runtime.NumGoroutine()
+	for i := 0; i < 100; i++ {
+		err := conf.Convert(context.Background(), strings.NewReader(`<p>hello</p><title>`), ioutil.Discard)
+		if !errors.Is(err, errTest) {
+			t.Fatalf("expected errTest, got %v", err)
+		}
+	}
+
+	// 終了した goroutine が回収されるのを少し待つ
+	for i := 0; i < 50 && runtime.NumGoroutine() > before; i++ {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if after := runtime.NumGoroutine(); after > before {
+		t.Fatalf("goroutines leaked: before=%d after=%d", before, after)
+	}
 }
